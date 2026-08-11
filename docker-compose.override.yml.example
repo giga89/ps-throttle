@@ -7,7 +7,7 @@
 
 services:
   ps-throttle:
-    image: ghcr.io/YOUR_USERNAME/ps-throttle:latest  # TODO: update after publishing
+    image: ghcr.io/giga89/ps-throttle:latest  # TODO: update after publishing
     # Or build locally:
     # build: /path/to/ps-throttle
     container_name: ps-throttle

@@ -38,7 +38,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ps-throttle.git
+git clone https://github.com/giga89/ps-throttle.git
 cd ps-throttle
 ```
 
@@ -80,7 +80,7 @@ services:
   # ... your existing services ...
 
   ps-throttle:
-    build: https://github.com/YOUR_USERNAME/ps-throttle.git
+    build: https://github.com/giga89/ps-throttle.git
     container_name: ps-throttle
     restart: unless-stopped
     network_mode: host

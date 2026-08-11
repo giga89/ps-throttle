@@ -210,21 +210,29 @@ class TransmissionThrottler:
 
     def get_status(self) -> dict:
         """Get current status of this Transmission instance."""
+        base_info = {
+            "name": self.instance.container_name,
+            "container_id": self.instance.container_id,
+            "host": self.instance.host,
+            "port": self.instance.port,
+            "auth_enabled": bool(self.instance.username),
+            "throttled": self._is_throttled,
+        }
+
         client = self._connect()
         if client is None:
             return {
-                "name": self.instance.container_name,
+                **base_info,
                 "connected": False,
-                "throttled": self._is_throttled,
+                "error": "Could not connect to RPC endpoint",
             }
 
         try:
             session = client.get_session()
             stats = client.session_stats()
             return {
-                "name": self.instance.container_name,
+                **base_info,
                 "connected": True,
-                "throttled": self._is_throttled,
                 "download_speed": getattr(stats, "download_speed", 0),
                 "upload_speed": getattr(stats, "upload_speed", 0),
                 "speed_limit_down": session.speed_limit_down,
@@ -232,11 +240,12 @@ class TransmissionThrottler:
                 "speed_limit_up": session.speed_limit_up,
                 "speed_limit_up_enabled": session.speed_limit_up_enabled,
                 "active_torrents": getattr(stats, "active_torrent_count", 0),
+                "paused_torrents": getattr(stats, "paused_torrent_count", 0),
+                "torrent_count": getattr(stats, "torrent_count", 0),
             }
         except Exception as e:
             return {
-                "name": self.instance.container_name,
+                **base_info,
                 "connected": False,
-                "throttled": self._is_throttled,
                 "error": str(e),
             }

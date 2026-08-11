@@ -25,4 +25,6 @@ services:
       THROTTLE_DOWN_KB: "50"
       THROTTLE_UP_KB: "20"
       TRANSMISSION_FILTER: "transmission"
+      WEB_ENABLED: "true"
+      WEB_PORT: "9870"
       LOG_LEVEL: "INFO"

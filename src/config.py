@@ -45,6 +45,11 @@ class Config:
         self.rpc_user: str = os.getenv("TRANSMISSION_USER", "")
         self.rpc_password: str = os.getenv("TRANSMISSION_PASS", "")
 
+        # Web Dashboard
+        self.web_enabled: bool = os.getenv("WEB_ENABLED", "true").lower() in ("true", "1", "yes")
+        self.web_port: int = int(os.getenv("WEB_PORT", "9870"))
+        self.web_host: str = os.getenv("WEB_HOST", "0.0.0.0")
+
         # Logging
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -64,5 +69,6 @@ class Config:
             f"Config(ps_ip={self.ps_ip}, check_interval={self.check_interval}s, "
             f"debounce={self.debounce_count}, detection={self.detection_methods}, "
             f"throttle={self.throttle_down_kb}↓/{self.throttle_up_kb}↑ KB/s, "
+            f"web_port={self.web_port if self.web_enabled else 'disabled'}, "
             f"filter='{self.transmission_filter}')"
         )

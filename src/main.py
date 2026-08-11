@@ -11,10 +11,13 @@ import signal
 import sys
 import time
 
+from typing import Optional
+
 from .config import Config
 from .ps_detector import PSDetector
 from .docker_discovery import DockerDiscovery
 from .transmission_throttle import TransmissionThrottler
+from .web_server import PSThrottleWebServer
 
 logger = logging.getLogger("ps-throttle")
 
@@ -29,6 +32,17 @@ class PSThrottle:
         self.discovery = DockerDiscovery(self.config)
         self.throttlers: dict[str, TransmissionThrottler] = {}
         self._running = True
+        self._start_time = time.time()
+        self.web_server: Optional[PSThrottleWebServer] = None
+
+        # Start web dashboard if enabled
+        if self.config.web_enabled:
+            self.web_server = PSThrottleWebServer(
+                host=self.config.web_host,
+                port=self.config.web_port,
+                status_provider=self.get_status_data,
+            )
+            self.web_server.start()
 
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -39,6 +53,37 @@ class PSThrottle:
         sig_name = signal.Signals(signum).name
         logger.info("Received %s, shutting down gracefully...", sig_name)
         self._running = False
+        if self.web_server:
+            self.web_server.stop()
+
+    def get_status_data(self) -> dict:
+        """
+        Produce a comprehensive status snapshot for Web UI and REST API.
+        """
+        instances_status = [t.get_status() for t in self.throttlers.values()]
+        is_any_throttled = any(t.is_throttled for t in self.throttlers.values())
+
+        return {
+            "ps_active": self.detector.state.is_active,
+            "is_throttled": is_any_throttled,
+            "ps_ip": self.config.ps_ip,
+            "ps_details": {
+                "last_method": self.detector.state.last_active_method,
+                "consecutive_inactive": self.detector.state.consecutive_inactive,
+                "debounce_count": self.config.debounce_count,
+                "check_interval": self.config.check_interval,
+                "detection_methods": self.config.detection_methods,
+            },
+            "throttle_config": {
+                "down_kb": self.config.throttle_down_kb,
+                "up_kb": self.config.throttle_up_kb,
+            },
+            "discovery_filter": self.config.transmission_filter,
+            "discovery_interval": self.config.discovery_interval,
+            "transmission_count": len(self.throttlers),
+            "transmission_instances": instances_status,
+            "uptime_seconds": int(time.time() - self._start_time),
+        }
 
     def _sync_throttlers(self):
         """
@@ -165,6 +210,8 @@ class PSThrottle:
         # Graceful shutdown: restore all limits
         logger.info("Shutting down - restoring all Transmission limits...")
         self._restore_all()
+        if self.web_server:
+            self.web_server.stop()
         logger.info("👋 ps-throttle stopped. Goodbye!")
 
 

@@ -45,5 +45,9 @@ services:
       # TRANSMISSION_USER: ""
       # TRANSMISSION_PASS: ""
 
+      # Web Dashboard (accessible at http://<host-ip>:9870)
+      WEB_ENABLED: "true"
+      WEB_PORT: "9870"
+
       # Log level: DEBUG, INFO, WARNING, ERROR
       LOG_LEVEL: "INFO"

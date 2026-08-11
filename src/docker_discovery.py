@@ -77,10 +77,10 @@ class DockerDiscovery:
     def _connect(self):
         """Connect to the Docker daemon."""
         try:
-            self._client = docker.from_env()
+            self._client = docker.from_env(timeout=3)
             self._client.ping()
             logger.info("✅ Connected to Docker daemon")
-        except DockerException as e:
+        except Exception as e:
             logger.error("❌ Failed to connect to Docker daemon: %s", e)
             logger.error("Make sure /var/run/docker.sock is mounted in the container")
             self._client = None

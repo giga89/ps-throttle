@@ -28,6 +28,7 @@
 
 - **🔍 Self-Discovery**: Automatically finds all Transmission Docker containers — no manual configuration needed
 - **🎯 Smart Detection**: Distinguishes between PS in **standby** vs **active** using Sony's DDP protocol + TCP port probing
+- **🌐 Web Dashboard**: Live real-time status page (`http://<host-ip>:8080`) showing limiter state, PS activity, and discovered containers
 - **💾 Non-Destructive**: Saves and restores original speed limits (doesn't stop containers)
 - **🔄 Dynamic**: Detects new/removed Transmission containers in real-time
 - **🐳 Docker-Native**: Runs as a lightweight container alongside your stack
@@ -156,7 +157,24 @@ All settings are configured via environment variables:
 | `DISCOVERY_INTERVAL` | `60` | Seconds between container re-discovery |
 | `TRANSMISSION_USER` | _(empty)_ | Fallback RPC username |
 | `TRANSMISSION_PASS` | _(empty)_ | Fallback RPC password |
+| `WEB_ENABLED` | `true` | Enable built-in web status dashboard |
+| `WEB_PORT` | `9870` | Web dashboard HTTP port |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+
+## Web Dashboard & REST API
+
+ps-throttle includes a lightweight, real-time web dashboard running on port `9870` (accessible at `http://<orangepi-or-host-ip>:9870`).
+
+### Features:
+- **PlayStation Status**: Displays current power state (Active Gaming vs Standby/Off), IP, detection method, and debounce counter.
+- **Limiter Status**: Shows whether Transmission instances are currently throttled or running at full speed.
+- **Transmission Instances**: Shows the exact number of discovered containers (0, 1, or more) with live download/upload bandwidth meters, active torrent counts, and applied RPC limits.
+- **Auto-Refresh**: Live updates every 3 seconds without page reloads.
+
+### REST Endpoints:
+- `GET /`: Interactive web dashboard.
+- `GET /api/status`: JSON status object with console state, limiter details, and all discovered Transmission instances.
+- `GET /api/health`: Healthcheck endpoint (`{"status": "healthy"}`).
 
 ## Architecture
 

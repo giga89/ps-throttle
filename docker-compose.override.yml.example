@@ -1,0 +1,28 @@
+# docker-compose.override.yml.example
+#
+# If you already have a docker-compose stack with Transmission,
+# copy this file to docker-compose.override.yml and adjust as needed.
+#
+# Or add the ps-throttle service directly to your existing docker-compose.yml.
+
+services:
+  ps-throttle:
+    image: ghcr.io/YOUR_USERNAME/ps-throttle:latest  # TODO: update after publishing
+    # Or build locally:
+    # build: /path/to/ps-throttle
+    container_name: ps-throttle
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      PS_IP: "192.168.9.22"
+      CHECK_INTERVAL: "10"
+      DEBOUNCE_COUNT: "5"
+      DETECTION_METHODS: "ddp,tcp"
+      THROTTLE_DOWN_KB: "50"
+      THROTTLE_UP_KB: "20"
+      TRANSMISSION_FILTER: "transmission"
+      LOG_LEVEL: "INFO"

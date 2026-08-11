@@ -1,0 +1,49 @@
+# ps-throttle: PlayStation Bandwidth Guardian
+#
+# This docker-compose file includes ps-throttle and an example
+# Transmission setup. If you already have Transmission running,
+# see docker-compose.override.yml.example for how to add ps-throttle
+# to your existing stack.
+
+services:
+  ps-throttle:
+    build: .
+    container_name: ps-throttle
+    restart: unless-stopped
+    network_mode: host   # Required to ping PS on local network
+    cap_add:
+      - NET_RAW          # Required for ping
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker self-discovery
+    environment:
+      # PlayStation IP address
+      PS_IP: "192.168.9.22"
+
+      # How often to check PS status (seconds)
+      CHECK_INTERVAL: "10"
+
+      # How many consecutive inactive checks before considering PS off
+      DEBOUNCE_COUNT: "5"
+
+      # Detection methods: ddp (standby-aware), tcp (port probe), ping (basic)
+      # Ordered by reliability. DDP detects standby vs awake natively.
+      # TCP checks port 9295 (only open when PS is ON, not in standby).
+      # Ping is a fallback (PS responds even in standby).
+      DETECTION_METHODS: "ddp,tcp"
+
+      # Speed limits when PS is active (KB/s)
+      THROTTLE_DOWN_KB: "50"
+      THROTTLE_UP_KB: "20"
+
+      # Docker container filter (matches image name or container name)
+      TRANSMISSION_FILTER: "transmission"
+
+      # Re-discovery interval for Transmission containers (seconds)
+      DISCOVERY_INTERVAL: "60"
+
+      # Fallback RPC credentials (used if not auto-detected from container env)
+      # TRANSMISSION_USER: ""
+      # TRANSMISSION_PASS: ""
+
+      # Log level: DEBUG, INFO, WARNING, ERROR
+      LOG_LEVEL: "INFO"

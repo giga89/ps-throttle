@@ -20,13 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY src/ ./src/
 
-# Run as non-root where possible
-# Note: ping requires NET_RAW capability, which is added via docker-compose
-RUN useradd --create-home --shell /bin/bash appuser
-USER appuser
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 9091)); s.close()" || exit 0
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9870/api/health', timeout=2)" || exit 0
 
 ENTRYPOINT ["python", "-m", "src.main"]

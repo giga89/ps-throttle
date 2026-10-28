@@ -10,7 +10,9 @@ The PS is considered "active" only if at least one detection method confirms it'
 (not just in standby). Includes debounce logic to avoid false triggers.
 """
 
+import json
 import logging
+import os
 import socket
 import struct
 import subprocess
@@ -18,6 +20,8 @@ import time
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("ps-throttle.detector")
+
+PLAYACTOR_JS = "/usr/local/lib/node_modules/playactor/dist/cli/index.js"
 
 
 # DDP (Device Discovery Protocol) constants
@@ -50,6 +54,7 @@ class PSState:
     consecutive_inactive: int = 0
     last_active_method: str = ""
     last_check_time: float = 0.0
+    ps_info: dict = field(default_factory=dict)
 
 
 class PSDetector:
@@ -57,19 +62,77 @@ class PSDetector:
     Detects PlayStation activity using multiple methods.
     
     The detector tries methods in order of reliability:
-    1. DDP protocol (most reliable - directly reports console state)
-    2. TCP port probe (reliable - port 9295 only open when ON)
-    3. Ping (least reliable - PS responds even in standby)
+    1. PlayActor CLI (official Remote Play protocol - AWAKE vs STANDBY + metadata)
+    2. DDP protocol (directly reports console state)
+    3. TCP port probe (reliable - port 9295 only open when ON)
+    4. Ping (least reliable - PS responds even in standby)
     """
 
     def __init__(self, config):
         self.config = config
         self.state = PSState()
         self._methods = {
+            "playactor": self._check_playactor,
             "ddp": self._check_ddp,
             "tcp": self._check_tcp_port,
             "ping": self._check_ping,
         }
+
+    def _check_playactor(self) -> DetectionResult:
+        """
+        Use PlayActor CLI (official Remote Play discovery) to check console state.
+        Returns AWAKE, STANDBY, or offline, plus metadata (firmware, device id, name).
+        """
+        try:
+            if os.path.exists(PLAYACTOR_JS):
+                cmd = ["node", PLAYACTOR_JS, "check", "--ip", self.config.ps_ip]
+            else:
+                cmd = ["playactor", "check", "--ip", self.config.ps_ip]
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=4.0
+            )
+            raw = (proc.stdout or "").strip()
+            if raw.startswith("{") and raw.endswith("}"):
+                data = json.loads(raw)
+                extras = data.get("extras", {})
+                status = extras.get("status") or data.get("status", "")
+                name = data.get("name", "PlayStation 5")
+                fw = data.get("systemVersion", "")
+                ps_id = data.get("id", "")
+                
+                self.state.ps_info = {
+                    "name": name,
+                    "status": status,
+                    "system_version": fw,
+                    "id": ps_id,
+                    "ip": self.config.ps_ip,
+                    "type": data.get("type", "PS5"),
+                    "updated_at": time.time()
+                }
+
+                if status == "AWAKE":
+                    return DetectionResult(
+                        is_active=True,
+                        method="playactor",
+                        details=f"Console is AWAKE ({name}, fw: {fw})"
+                    )
+                elif status == "STANDBY":
+                    return DetectionResult(
+                        is_active=False,
+                        method="playactor",
+                        details=f"Console is in STANDBY ({name})"
+                    )
+        except subprocess.TimeoutExpired:
+            logger.debug("PlayActor check timed out")
+        except FileNotFoundError:
+            logger.debug("playactor command not found in PATH")
+        except Exception as e:
+            logger.debug("PlayActor check exception: %s", e)
+
+        return DetectionResult(is_active=False, method="playactor", details="No playactor response")
 
     def check(self) -> bool:
         """
@@ -125,6 +188,8 @@ class PSDetector:
             try:
                 result = method()
                 if result.is_active:
+                    return result
+                if method_name in ("ddp", "playactor") and "STANDBY" in result.details:
                     return result
             except Exception as e:
                 logger.debug("Detection method %s failed: %s", method_name, e)

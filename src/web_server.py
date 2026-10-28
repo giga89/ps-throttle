@@ -9,11 +9,24 @@ Provides a lightweight, embedded HTTP server with:
 
 import json
 import logging
+import os
+import subprocess
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
 
 logger = logging.getLogger("ps-throttle.web")
+
+PLAYACTOR_JS = "/usr/local/lib/node_modules/playactor/dist/cli/index.js"
+
+
+def run_playactor_cmd(args: list, timeout: float = 12.0) -> subprocess.CompletedProcess:
+    """Run playactor command safely using node interpreter or CLI fallback."""
+    if os.path.exists(PLAYACTOR_JS):
+        cmd = ["node", PLAYACTOR_JS] + args
+    else:
+        cmd = ["playactor"] + args
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
 HTML_DASHBOARD = """<!DOCTYPE html>
@@ -923,9 +936,10 @@ except ImportError:
 
 
 class StatusHTTPServer(DefaultHTTPServer):
-    """HTTP Server that holds reference to status_provider callable."""
-    def __init__(self, server_address, RequestHandlerClass, status_provider=None):
+    """HTTP Server that holds reference to status_provider callable and ps_ip."""
+    def __init__(self, server_address, RequestHandlerClass, status_provider=None, ps_ip=None):
         self.status_provider = status_provider
+        self.ps_ip = ps_ip or "192.168.9.22"
         super().__init__(server_address, RequestHandlerClass)
 
 
@@ -941,10 +955,16 @@ class PSThrottleHTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
+
+    def do_OPTIONS(self):
+        """Support CORS preflight."""
+        self._send_response(204, "text/plain", b"")
 
     def do_GET(self):
         """Handle GET requests."""
@@ -979,14 +999,61 @@ class PSThrottleHTTPRequestHandler(BaseHTTPRequestHandler):
             # 404 Not Found
             self._send_response(404, "text/plain", b"Not Found")
 
+    def do_POST(self):
+        """Handle POST requests for PlayStation actions via PlayActor."""
+        origin = self.headers.get("Origin", "")
+        if origin and not any(h in origin for h in ("192.168.9.85", "127.0.0.1", "localhost")):
+            self._send_response(403, "application/json", b'{"ok": false, "error": "Forbidden cross-origin POST"}')
+            return
+        path = self.path.split("?")[0]
+        ps_ip = getattr(self.server, "ps_ip", "192.168.9.22")
+
+        if path == "/api/ps/standby":
+            try:
+                logger.info("💤 Triggering PS5 Standby via PlayActor for IP %s...", ps_ip)
+                res = run_playactor_cmd(["standby", "--ip", ps_ip, "--ps5"], timeout=12.0)
+                ok = res.returncode == 0 or "standby" in (res.stdout + res.stderr).lower()
+                payload = {"ok": ok, "stdout": res.stdout, "stderr": res.stderr}
+                self._send_response(200 if ok else 500, "application/json", json.dumps(payload).encode("utf-8"))
+            except Exception as e:
+                logger.error("Error putting PS5 to standby: %s", e)
+                self._send_response(500, "application/json", json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+
+        elif path == "/api/ps/wake":
+            try:
+                logger.info("⚡ Triggering PS5 Wake via PlayActor for IP %s...", ps_ip)
+                res = run_playactor_cmd(["wake", "--ip", ps_ip, "--ps5"], timeout=12.0)
+                ok = res.returncode == 0 or "awake" in (res.stdout + res.stderr).lower()
+                payload = {"ok": ok, "stdout": res.stdout, "stderr": res.stderr}
+                self._send_response(200 if ok else 500, "application/json", json.dumps(payload).encode("utf-8"))
+            except Exception as e:
+                logger.error("Error waking PS5: %s", e)
+                self._send_response(500, "application/json", json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+
+        elif path == "/api/ps/check":
+            try:
+                res = run_playactor_cmd(["check", "--ip", ps_ip], timeout=5.0)
+                stdout = res.stdout.strip()
+                if stdout.startswith("{") and stdout.endswith("}"):
+                    self._send_response(200, "application/json", stdout.encode("utf-8"))
+                else:
+                    self._send_response(200, "application/json", json.dumps({"raw": stdout, "code": res.returncode}).encode("utf-8"))
+            except Exception as e:
+                logger.error("Error checking PS5 via PlayActor: %s", e)
+                self._send_response(500, "application/json", json.dumps({"ok": False, "error": str(e)}).encode("utf-8"))
+
+        else:
+            self._send_response(404, "text/plain", b"Not Found")
+
 
 class PSThrottleWebServer:
     """Manages the background web server thread."""
 
-    def __init__(self, host: str, port: int, status_provider: Callable[[], dict]):
+    def __init__(self, host: str, port: int, status_provider: Callable[[], dict], ps_ip: str = "192.168.9.22"):
         self.host = host
         self.port = port
         self.status_provider = status_provider
+        self.ps_ip = ps_ip
         self.server: Optional[StatusHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
 
@@ -997,6 +1064,7 @@ class PSThrottleWebServer:
                 (self.host, self.port),
                 PSThrottleHTTPRequestHandler,
                 status_provider=self.status_provider,
+                ps_ip=self.ps_ip,
             )
             self.thread = threading.Thread(
                 target=self.server.serve_forever,

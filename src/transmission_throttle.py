@@ -108,22 +108,37 @@ class TransmissionThrottler:
         try:
             # Save current limits before modifying
             session = client.get_session()
-            self._original_limits = OriginalLimits(
-                speed_limit_down=session.speed_limit_down or 0,
-                speed_limit_down_enabled=session.speed_limit_down_enabled or False,
-                speed_limit_up=session.speed_limit_up or 0,
-                speed_limit_up_enabled=session.speed_limit_up_enabled or False,
-                alt_speed_enabled=session.alt_speed_enabled or False,
+            already_at_throttle = (
+                bool(session.speed_limit_down_enabled)
+                and session.speed_limit_down == self.config.throttle_down_kb
+                and bool(session.speed_limit_up_enabled)
+                and session.speed_limit_up == self.config.throttle_up_kb
             )
-
-            logger.info(
-                "💾 Saved original limits for %s: ↓%s KB/s (enabled=%s), ↑%s KB/s (enabled=%s)",
-                self.instance.container_name,
-                self._original_limits.speed_limit_down,
-                self._original_limits.speed_limit_down_enabled,
-                self._original_limits.speed_limit_up,
-                self._original_limits.speed_limit_up_enabled,
-            )
+            if already_at_throttle:
+                # Instance was already throttled prior to ps-throttle startup; restore to unlimited on exit
+                self._original_limits = None
+                logger.info(
+                    "💾 %s was already at throttle limits (%d/%d KB/s); will restore to unlimited when PS is inactive",
+                    self.instance.container_name,
+                    self.config.throttle_down_kb,
+                    self.config.throttle_up_kb,
+                )
+            else:
+                self._original_limits = OriginalLimits(
+                    speed_limit_down=session.speed_limit_down or 0,
+                    speed_limit_down_enabled=session.speed_limit_down_enabled or False,
+                    speed_limit_up=session.speed_limit_up or 0,
+                    speed_limit_up_enabled=session.speed_limit_up_enabled or False,
+                    alt_speed_enabled=session.alt_speed_enabled or False,
+                )
+                logger.info(
+                    "💾 Saved original limits for %s: ↓%s KB/s (enabled=%s), ↑%s KB/s (enabled=%s)",
+                    self.instance.container_name,
+                    self._original_limits.speed_limit_down,
+                    self._original_limits.speed_limit_down_enabled,
+                    self._original_limits.speed_limit_up,
+                    self._original_limits.speed_limit_up_enabled,
+                )
 
             # Apply throttle limits
             client.set_session(

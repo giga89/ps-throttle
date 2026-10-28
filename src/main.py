@@ -41,6 +41,7 @@ class PSThrottle:
                 host=self.config.web_host,
                 port=self.config.web_port,
                 status_provider=self.get_status_data,
+                ps_ip=self.config.ps_ip,
             )
             self.web_server.start()
 
@@ -60,8 +61,9 @@ class PSThrottle:
         """
         Produce a comprehensive status snapshot for Web UI and REST API.
         """
-        instances_status = [t.get_status() for t in self.throttlers.values()]
-        is_any_throttled = any(t.is_throttled for t in self.throttlers.values())
+        throttlers_list = list(self.throttlers.values())
+        instances_status = [t.get_status() for t in throttlers_list]
+        is_any_throttled = any(t.is_throttled for t in throttlers_list)
 
         return {
             "ps_active": self.detector.state.is_active,
@@ -73,6 +75,7 @@ class PSThrottle:
                 "debounce_count": self.config.debounce_count,
                 "check_interval": self.config.check_interval,
                 "detection_methods": self.config.detection_methods,
+                "info": self.detector.state.ps_info,
             },
             "throttle_config": {
                 "down_kb": self.config.throttle_down_kb,
@@ -115,19 +118,19 @@ class PSThrottle:
 
     def _throttle_all(self):
         """Apply throttle to all discovered Transmission instances."""
-        for throttler in self.throttlers.values():
+        for throttler in list(self.throttlers.values()):
             if not throttler.is_throttled:
                 throttler.throttle()
 
     def _restore_all(self):
         """Restore original limits on all Transmission instances."""
-        for throttler in self.throttlers.values():
+        for throttler in list(self.throttlers.values()):
             if throttler.is_throttled:
                 throttler.restore()
 
     def _log_status(self):
         """Log current status of all managed instances."""
-        for throttler in self.throttlers.values():
+        for throttler in list(self.throttlers.values()):
             status = throttler.get_status()
             if status.get("connected"):
                 dl_speed = status.get("download_speed", 0) / 1024  # bytes to KB
@@ -183,11 +186,12 @@ class PSThrottle:
                 # Check PlayStation status
                 ps_active = self.detector.check()
 
-                if ps_active and not was_active:
-                    # PS just became active - throttle everything
-                    logger.info("🎮 PlayStation is ACTIVE - throttling Transmission")
+                if ps_active:
+                    if not was_active:
+                        logger.info("🎮 PlayStation is ACTIVE - throttling Transmission")
+                        was_active = True
+                    # Ensure all discovered instances (including newly restarted ones) are throttled
                     self._throttle_all()
-                    was_active = True
 
                 elif not ps_active and was_active:
                     # PS just became inactive - restore everything

@@ -16,9 +16,9 @@ class Config:
         self.check_interval: int = int(os.getenv("CHECK_INTERVAL", "10"))
         self.debounce_count: int = int(os.getenv("DEBOUNCE_COUNT", "5"))
 
-        # Detection methods (comma-separated: ddp,tcp,ping)
+        # Detection methods (comma-separated: playactor,ddp,tcp,ping)
         self.detection_methods: list[str] = os.getenv(
-            "DETECTION_METHODS", "ddp,tcp,ping"
+            "DETECTION_METHODS", "playactor,ddp,tcp,ping"
         ).lower().split(",")
 
         # DDP (Device Discovery Protocol) settings
